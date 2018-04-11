@@ -1,0 +1,23 @@
+metadata:
+    # 元数据接口地址
+    metadata_url: ""
+    # 元数据client_id
+    metadata_client_id: ""
+    # 元数据secret
+    metadata_secret: ""
+
+rdp:
+    # rdp 登录域名
+    rdp_domain: ""
+    # rdp 可用端口范围，开始结束
+    rdp_port: [0, 0]
+    # rdp 脚本文件路径
+    rdp_script: ""
+    # rdp key文件路径
+    rdp_key: ""
+    # rdp crt文件路径
+    rdp_crt: ""
+
+log:
+    # 日志文件目录
+    log_dir: ""
