@@ -13,6 +13,7 @@ import textwrap
 import getpass
 import paramiko
 from paramiko.agent import AgentRequestHandler
+from paramiko.py3compat import u
 import errno
 import traceback
 import struct
@@ -46,7 +47,9 @@ PRINT_NUM = 50
 try:
     import termios
     import tty
+    has_termios = True
 except ImportError:
+    has_termios = False
     print('\033[1;31m仅支持类Unix系统 Only unix like supported.\033[0m')
     time.sleep(3)
     sys.exit()
@@ -438,6 +441,7 @@ class SshTty(Tty):
             pass
 
     def posix_shell(self):
+        import select
         """
         Use paramiko channel connect server interactive.
         使用paramiko模块的channel，连接后端，进入交互式
@@ -445,13 +449,14 @@ class SshTty(Tty):
         # 创建记录日志的文件，分为.log和.time两个文件,log表示记录日志，True
         log_file_f, log_time_f, log_input_f = self.get_log()
         # 获取文件输入流
-        old_tty = termios.tcgetattr(sys.stdin)
+        fd = sys.stdin.fileno()
+        old_tty = termios.tcgetattr(fd)
         pre_timestamp = time.time()
         data = ''
         input_mode = False
         try:
-            tty.setraw(sys.stdin.fileno())
-            tty.setcbreak(sys.stdin.fileno())
+            tty.setraw(fd) # 设置终端为非阻塞的输入方式，按字符响应键盘输入
+            tty.setcbreak(fd)
             self.channel.settimeout(0.0)
 
             # 提供持续的输入命令行
@@ -461,7 +466,7 @@ class SshTty(Tty):
                     # 锁，当有输入的时候，锁定输入进程
                     flag = fcntl.fcntl(sys.stdin, fcntl.F_GETFL, 0)
                     fcntl.fcntl(
-                        sys.stdin.fileno(),
+                        fd,
                         fcntl.F_SETFL,
                         flag | os.O_NONBLOCK)
                 except Exception:
@@ -469,17 +474,15 @@ class SshTty(Tty):
 
                 if self.channel in r:
                     try:
-                        x = self.channel.recv(10240)
+                        x = u(self.channel.recv(10240))
                         if len(x) == 0:
                             break
                         # 当有vim编辑文件时，记录相应信息
                         if self.vim_flag:
-                            self.vim_data += x.decode()
-#                             print self.vim_data,"VIM"
+                            self.vim_data += x
+
                         index = 0
                         len_x = len(x)
-                        # 作用?
-                        # 将命令输入--》 命令行？
                         while index < len_x:
                             try:
                                 n = os.write(sys.stdout.fileno(), x[index:])
@@ -488,8 +491,6 @@ class SshTty(Tty):
                             except OSError as msg:
                                 if msg.errno == errno.EAGAIN:
                                     continue
-                        # sys.stdout.write(x)
-                        # sys.stdout.flush()
                         now_timestamp = time.time()
                         # round四舍五入，保留一位小数点 5.667 --> 6.0,可以指定保留小数位数
                         # routd(num, 4)表示保留4位有效数字
@@ -555,17 +556,40 @@ class SshTty(Tty):
 
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_tty)
-            log_file_f.write(
-                ('End time is %s' %
-                 datetime.datetime.now()).encode())
+
+            log_file_f.write(("End time is %s" % datetime.datetime.now()).encode())
             log_file_f.close()
             log_time_f.close()
             log_input_f.close()
-            # log.is_finished = True
-            # log.end_time = datetime.datetime.now()
-            # log.save()
-        # except:
-        #     pass
+
+    # thanks to Mike Looijmans for this code
+    def windows_shell(chan):
+        import threading
+
+        sys.stdout.write("Line-buffered terminal emulation. Press F6 or ^Z to send EOF.\r\n\r\n")
+
+        def writeall(sock):
+            while True:
+                data = sock.recv(256)
+                if not data:
+                    sys.stdout.write('\r\n*** EOF ***\r\n\r\n')
+                    sys.stdout.flush()
+                    break
+                sys.stdout.write(data)
+                sys.stdout.flush()
+
+        writer = threading.Thread(target=writeall, args=(chan,))
+        writer.start()
+
+        try:
+            while True:
+                d = sys.stdin.read(1)
+                if not d:
+                    break
+                chan.send(d)
+        except EOFError:
+            # user hit ^Z or F6
+            pass
 
     def connect(self):
         """
@@ -712,8 +736,6 @@ def enter(print_over, nav, option):
     if option in ['P', 'p']:
         if print_over:
             nav.search()
-            host_index = 0
-            print_over = False
             nav.print_host()
         return
 
@@ -770,14 +792,14 @@ def enter(print_over, nav, option):
         if not check_hostname(host):
             color_print('Host %r not exist!!' % host)
             nav.print_nav()
+            return
 
         print('Connecting to %s@%s' % (user, host))
         ssh_tty = SshTty(
             user,
             login_user,
             host,
-            "/home/%s/.ssh/id_rsa" %
-            user)
+            "/home/%s/.ssh/id_rsa" % user)
         ssh_tty.connect()
         print_over = True
 
@@ -787,7 +809,7 @@ class RDPException(Exception):
     pass
 
 
-class RDP(object):
+class RDP(RDPException):
 
     def __init__(self, c, login_user, ip):
         self.c = c
