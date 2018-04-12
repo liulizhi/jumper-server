@@ -20,6 +20,7 @@ import fcntl
 import signal
 import socket
 import json
+import readline
 
 import logging
 from subprocess import Popen
@@ -670,6 +671,7 @@ class SshTty(Tty):
 
             self.posix_shell()
 
+            # import pdb;pdb.set_trace()
             # Shutdown channel socket
             channel.close()
         except Exception as e:
@@ -734,8 +736,8 @@ class Command(object):
         return
 
 
-def enter(cf, print_over, nav, option):
-
+def enter(cf, print_over, option):
+    nav = Nav(login_user)
     gid_pattern = re.compile(r'^g\d+$')
     c = Command(option, nav, print_over)
 
@@ -878,7 +880,7 @@ class Nav(Utils):
         打印提示导航
         """
 
-        msg = """//
+        msg = """\n//
 //                                  _oo8oo_
 //                                 o8888888o
 //                                 88" . "88
@@ -974,7 +976,6 @@ def start(cf):
 
     nav = Nav(login_user)
     nav.print_nav()
-
     print_over = True
 
     try:
@@ -986,8 +987,8 @@ def start(cf):
                 nav.print_nav()
                 continue
             except KeyboardInterrupt:
-                sys.exit(0)
-            enter(cf, print_over, nav, option)
+                sys.exit(1)
+            enter(cf, print_over, option)
 
     except IndexError as e:
         color_print(e)
