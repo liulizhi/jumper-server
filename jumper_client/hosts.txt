@@ -1,6 +1,30 @@
-host1
-host2
-host3
-host4
-host5
-host6
+[
+            {
+                "hostname": "host1-v-sendal.com",
+                "ip": "10.10.10.10",
+            },
+            {
+                "hostname": "host2-a-sendal.com",
+                "ip": "10.10.10.11",
+            },
+            {
+                "hostname": "host3-o-sendal.com",
+                "ip": "10.10.10.12",
+            },
+            {
+                "hostname": "host4-a-sendal.com",
+                "ip": "10.10.10.13",
+            },
+            {
+                "hostname": "host5-o-sendal.com",
+                "ip": "10.10.10.14",
+            },
+            {
+                "hostname": "host6-o-sendal.com",
+                "ip": "10.10.10.15",
+            },
+            {
+                "hostname": "192.168.1.136",
+                "ip": "192.168.1.136",
+            },
+]

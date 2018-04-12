@@ -8,7 +8,6 @@ import os
 import re
 import time
 import datetime
-import readline
 import textwrap
 import getpass
 import paramiko
@@ -20,12 +19,9 @@ import struct
 import fcntl
 import signal
 import socket
-import select
 
 import logging
 from subprocess import Popen
-# from Perm_host import MetadataUtil, Config
-# from .enter import enter
 
 if sys.version_info[0] < 3:
     input = raw_input
@@ -372,40 +368,51 @@ class Tty(object):
             except paramiko.SSHException:
                 logging.info('... nope.')
 
-    @staticmethod
-    def manual_auth(t, username, hostname):
+    def manual_auth(self, t, username, hostname):
         default_auth = 'p'
         auth = input(
             'Auth by (p)assword, (r)sa key, or (d)ss key? [%s] ' %
-            default_auth)
+            default_auth).strip()
         if len(auth) == 0:
             auth = default_auth
 
         if auth == 'r':
-            default_path = os.path.join(os.environ['HOME'], '.ssh', 'id_rsa')
-            path = input('RSA key [%s]: ' % default_path)
-            if len(path) == 0:
-                path = default_path
-            try:
-                key = paramiko.RSAKey.from_private_key_file(path)
-            except paramiko.PasswordRequiredException:
-                password = getpass.getpass('RSA key password: ')
-                key = paramiko.RSAKey.from_private_key_file(path, password)
-            t.auth_publickey(username, key)
+            self.__rsa_auth(t, username)
         elif auth == 'd':
-            default_path = os.path.join(os.environ['HOME'], '.ssh', 'id_dsa')
-            path = input('DSS key [%s]: ' % default_path)
-            if len(path) == 0:
-                path = default_path
-            try:
-                key = paramiko.DSSKey.from_private_key_file(path)
-            except paramiko.PasswordRequiredException:
-                password = getpass.getpass('DSS key password: ')
-                key = paramiko.DSSKey.from_private_key_file(path, password)
-            t.auth_publickey(username, key)
+            self.__dss_auth(t, username)
         else:
-            pw = getpass.getpass('Password for %s@%s: ' % (username, hostname))
-            t.auth_password(username, pw)
+            self.__up_auth(t, username, hostname)
+
+    @staticmethod
+    def __rsa_auth(t, username):
+        default_path = os.path.join(os.environ['HOME'], '.ssh', 'id_rsa')
+        path = input('RSA key [%s]: ' % default_path)
+        if len(path) == 0:
+            path = default_path
+        try:
+            key = paramiko.RSAKey.from_private_key_file(path)
+        except paramiko.PasswordRequiredException:
+            password = getpass.getpass('RSA key password: ')
+            key = paramiko.RSAKey.from_private_key_file(path, password)
+        t.auth_publickey(username, key)
+
+    @staticmethod
+    def __dss_auth(t, username):
+        default_path = os.path.join(os.environ['HOME'], '.ssh', 'id_dsa')
+        path = input('DSS key [%s]: ' % default_path)
+        if len(path) == 0:
+            path = default_path
+        try:
+            key = paramiko.DSSKey.from_private_key_file(path)
+        except paramiko.PasswordRequiredException:
+            password = getpass.getpass('DSS key password: ')
+            key = paramiko.DSSKey.from_private_key_file(path, password)
+        t.auth_publickey(username, key)
+
+    @staticmethod
+    def __up_auth(t, username, hostname):
+        pw = getpass.getpass('Password for %s@%s: ' % (username, hostname))
+        t.auth_password(username, pw)
 
 
 class SshTty(Tty):
@@ -610,36 +617,6 @@ class SshTty(Tty):
                 print('*** SSH negotiation failed.')
                 return
 
-            # # 不需要从文件里面读取key
-            # try:
-            #     keys = paramiko.util.load_host_keys(os.path.expanduser('~/.ssh/known_hosts'))
-            # except IOError:
-            #     try:
-            #         keys = paramiko.util.load_host_keys(os.path.expanduser('~/ssh/known_hosts'))
-            #     except IOError:
-            #         print('*** Unable to open host keys file')
-            #         keys = {}
-            #
-            # # check server's host key -- this is important.
-            # key = t.get_remote_server_key()
-            # if self.asset not in keys:
-            #     print('*** WARNING: Unknown host key!')
-            # elif key.get_name() not in keys[self.asset]:
-            #     print('*** WARNING: Unknown host key!')
-            # elif keys[self.asset][key.get_name()] != key:
-            #     print('*** WARNING: Host key has changed!!!')
-            #     # sys.exit(1)
-            #     return
-            # else:
-            #     print('*** Host key OK.')
-
-            # get username
-            # if self.user == '':
-            #     default_username = getpass.getuser()
-            #     username = input('Username [%s]: ' % default_username)
-            #     if len(username) == 0:
-            #         username = default_username
-
             try:
                 self.agent_auth(t, self.username)
             except Exception as e:
@@ -688,10 +665,10 @@ class SshTty(Tty):
 
 def is_ip_addr(ip):
     reg = re.compile(
-            "^(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|[1-9])\\."
-            "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\."
-            "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\."
-            "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)$"
+        "^(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|[1-9])\\."
+        "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\."
+        "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\."
+        "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)$"
     )
 
     return bool(reg.match(ip))
@@ -869,36 +846,7 @@ class Nav(object):
     """
 
     def __init__(self, user):
-        self.perm_host = [
-            {
-                "hostname": "host1-v-sendal.com",
-                "ip": "10.10.10.10",
-            },
-            {
-                "hostname": "host2-a-sendal.com",
-                "ip": "10.10.10.11",
-            },
-            {
-                "hostname": "host3-o-sendal.com",
-                "ip": "10.10.10.12",
-            },
-            {
-                "hostname": "host4-a-sendal.com",
-                "ip": "10.10.10.13",
-            },
-            {
-                "hostname": "host5-o-sendal.com",
-                "ip": "10.10.10.14",
-            },
-            {
-                "hostname": "host6-o-sendal.com",
-                "ip": "10.10.10.15",
-            },
-            {
-                "hostname": "192.168.1.136",
-                "ip": "192.168.1.136",
-            },
-        ]
+        self.perm_host = None
         self.user = user
         self.search_result = []
         self.user_perm = {}
@@ -910,7 +858,32 @@ class Nav(object):
         打印提示导航
         """
 
-        msg = """\n\033[1;32m###    欢迎使用跳板机系统   ### \033[0m
+        msg = """//
+//                                  _oo8oo_
+//                                 o8888888o
+//                                 88" . "88
+//                                 (| -_- |)
+//                                 0\  =  /0
+//                               ___/'==='\___
+//                             .' \\\|     |// '.
+//                            / \\\|||  :  |||// \\
+//                           / _||||| -:- |||||_ \\
+//                          |   |  \\\\  -  /// |   |
+//                          | \_|  ''\---/''  |_/ |
+//                          \  .-\__  '-'  __/-.  /
+//                        ___'. .'  /--.--\  '. .'___
+//                     ."" '<  '.___\_<|>_/___.'  >' "".
+//                    | | :  `- \`.:`\ _ /`:.`/ -`  : | |
+//                    \  \ `-.   \_ __\ /__ _/   .-` /  /
+//                =====`-.____`.___ \_____/ ___.`____.-`=====
+//                                  `=---=`
+//
+//
+//               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+//                     佛祖保佑      永不宕机     永无bug
+//
+        \n\033[1;32m###    欢迎使用跳板机系统   ### \033[0m
         1) 输入 \033[32m主机名\033[0m 或 \033[32mIP\033[0m 直接登录.
         2) 输入 \033[32mP/p\033[0m 显示您有权限的主机.
         3) 输入 \033[32m/\033[0m + \033[32m关键字 \033[0m进行搜索.
@@ -940,7 +913,6 @@ class Nav(object):
         if str_r != '':
             self.search_result = list(
                 filter(
-                    # lambda host: host.get("hostname").lower().count(str_r.lower()),
                     is_contain,
                     self.search_result
                 )
@@ -987,7 +959,6 @@ def start(cf):
 
     try:
         while True:
-
             try:
                 option = input(
                     "\033[1;32mOption or Host>:\033[0m ").strip()
