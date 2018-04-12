@@ -20,4 +20,4 @@ rdp:
 
 log:
     # 日志文件目录
-    log_dir: ""
+    log_dir: "/tmp/"

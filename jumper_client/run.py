@@ -9,10 +9,12 @@
 # @license : Copyright(C), Rongcapital.Inc
 # @Contact : QiRui.Su <schangech@gmail.com>
 
-from pathlib import Path
-import click
 
-from .config import Config
+import click
+from pathlib import Path
+
+from config import Config
+from jumper_server import start
 
 __version = "v1.0.0"
 
@@ -30,7 +32,8 @@ def main(conf, version):
         import sys
         sys.exit(1)
 
-    c = Config(conf)
+    c = Config(config_path=conf)
+    start(c)
 
 
 if __name__ == "__main__":

@@ -20,17 +20,6 @@
     /rc/local/rc-jumpser/ssh_test.py
 ```
 
-## Changelog
-
-### 2017-11-16
-- l显示私钥，L显示公钥
-
-### 2017-10-25
-- 权限列表改为从元数据获取
-
-### 2017-10-19
-- 支持Python3
-
-### 2017-10-16
-- 回车键不再默认列出主机列表
-- 配置文件增加IPA版本号
+## 回放操作记录信息
+scriptreplay sendal_sendal@192.168.1.136_113645.time sendal_sendal@192.168.1.136_113645.log
+scriptreplay sendal_sendal@192.168.1.136_113645.time sendal_sendal@192.168.1.136_113645.txt

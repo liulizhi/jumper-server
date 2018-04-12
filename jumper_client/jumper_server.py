@@ -55,6 +55,8 @@ except ImportError:
     sys.exit()
 
 
+# class Utils(object):
+
 def color_print(msg, color='red', exits=False):
     """
     Print colorful string.
@@ -131,23 +133,24 @@ class Tty(object):
     """
 
     def __init__(self, c, user, login_user, asset, role, login_type='ssh'):
+        self.c = c
         self.username = user
         self.asset_name = asset
-        self.ip = None
-        self.port = 22
-        self.ssh = None
-        self.channel = None
         self.asset = asset
         self.user = user
         self.login_user = login_user
         self.role = role
-        self.remote_ip = ''
         self.login_type = login_type
+
+        self.remote_ip = ''
+        self.ip = None
+        self.port = 22
+        self.ssh = None
+        self.channel = None
         self.vim_flag = False
         self.ps1_pattern = re.compile('\[.*@.*\][\$#]')
         self.vim_data = ''
-
-        self.get_log()
+        self.TIOCGWINSZ = 1074295912
 
     @staticmethod
     def is_output(strings):
@@ -192,9 +195,13 @@ class Tty(object):
 
     @staticmethod
     def deal_replace_char(match_str, result_command, backspace_num):
-        '''
+        """
         处理替换命令
-        '''
+        :param match_str:
+        :param result_command:
+        :param backspace_num:
+        :return:
+        """
         str_lists = re.findall(r'(?<=\x1b\[1@)\w', match_str)
         tmp_str = ''.join(str_lists)
         result_command_list = list(result_command)
@@ -270,8 +277,8 @@ class Tty(object):
                 str_r = str_r[len(str(tmp.group(0))):]
                 if len(str_r) != 0:
                     if reach_backspace_flag:
-                        result_command = result_command[0:- \
-                            backspace_num] + pattern_str
+                        result_command = result_command[0:-
+                                                        backspace_num] + pattern_str
                         pattern_str = ''
                     else:
                         reach_backspace_flag = True
@@ -306,14 +313,15 @@ class Tty(object):
         记录用户的日志
         """
 
-        tty_log_dir = os.path.join(self.log_dir, 'tty')
+        tty_log_dir = os.path.join(self.c.log_dir, 'tty')
         date_today = datetime.datetime.now()
-        date_start = date_today.strftime('%Y%m%d')
-        time_start = date_today.strftime('%H%M%S')
+        date_start = date_today.strftime('%Y-%m-%d')
+        time_start = date_today.strftime('%Y-%m-%d-%H-%M-%S')
         today_connect_log_dir = os.path.join(tty_log_dir, date_start)
         log_file_path = os.path.join(
             today_connect_log_dir, '%s_%s@%s_%s' %
-            (self.login_user, self.username, self.asset_name, time_start))
+            (self.login_user, self.username, self.asset_name, time_start)
+        )
 
         try:
             mkdir(os.path.dirname(today_connect_log_dir), mode=0o777)
@@ -326,32 +334,22 @@ class Tty(object):
                   (today_connect_log_dir, tty_log_dir))
 
         try:
-            log_file_f = open(log_file_path + '.log', 'ab')
-            log_time_f = open(log_file_path + '.time', 'ab')
-            log_input_f = open(log_file_path + '.txt', 'ab')
-        except IOError:
+            log_file_f = open(log_file_path + '.log', 'ab+')
+            log_time_f = open(log_file_path + '.time', 'ab+')
+            log_input_f = open(log_file_path + '.txt', 'ab+')
+        except IOError as err:
             logging.info('创建tty日志文件失败, 请修改目录%s权限' % today_connect_log_dir)
             print('创建tty日志文件失败, 请修改目录%s权限' % today_connect_log_dir)
+            color_print(err)
+            sys.exit(1)
 
         if self.login_type == 'ssh':  # 如果是ssh连接过来，记录connect.py的pid，web terminal记录为日志的id
-            pid = os.getpid()
             self.remote_ip = remote_ip  # 获取远端IP
-        else:
-            pid = 0
-
-        # log = Log(user=self.username, host=self.asset_name, remote_ip=self.remote_ip, login_type=self.login_type,
-        #           log_path=log_file_path, start_time=date_today, pid=pid)
-        # log.save()
-        # if self.login_type == 'web':
-        #     log.pid = log.id  # 设置log id为websocket的id, 然后kill时干掉websocket
-        #     log.save()
-        #
-        # log_file_f.write('Start at %s\r\n' % datetime.datetime.now())
-        # log_file_f.close()
 
         return log_file_f, log_time_f, log_input_f
 
-    def agent_auth(self, transport, username):
+    @staticmethod
+    def agent_auth(transport, username):
         """
         Attempt to authenticate to the given transport using any of the private
         keys available from an SSH agent.
@@ -374,7 +372,8 @@ class Tty(object):
             except paramiko.SSHException:
                 logging.info('... nope.')
 
-    def manual_auth(self, t, username, hostname):
+    @staticmethod
+    def manual_auth(t, username, hostname):
         default_auth = 'p'
         auth = input(
             'Auth by (p)assword, (r)sa key, or (d)ss key? [%s] ' %
@@ -415,21 +414,18 @@ class SshTty(Tty):
     一个虚拟终端类，实现连接ssh和记录日志
     """
 
-    @staticmethod
-    def get_win_size():
+    def get_win_size(self):
         """
         This function use to get the size of the windows!
         获得terminal窗口大小
         """
-        if 'TIOCGWINSZ' in dir(termios):
-            TIOCGWINSZ = termios.TIOCGWINSZ
-        else:
-            TIOCGWINSZ = 1074295912
+        self.TIOCGWINSZ = termios.TIOCGWINSZ if 'TIOCGWINSZ' in dir(
+            termios) else self.TIOCGWINSZ
         s = struct.pack('HHHH', 0, 0, 0, 0)
-        x = fcntl.ioctl(sys.stdout.fileno(), TIOCGWINSZ, s)
+        x = fcntl.ioctl(sys.stdout.fileno(), self.TIOCGWINSZ, s)
         return struct.unpack('HHHH', x)[0:2]
 
-    def set_win_size(self, sig, data):
+    def set_win_size(self):
         """
         This function use to set the window size of the terminal!
         设置terminal窗口大小
@@ -437,14 +433,14 @@ class SshTty(Tty):
         try:
             win_size = self.get_win_size()
             self.channel.resize_pty(height=win_size[0], width=win_size[1])
-        except Exception:
-            pass
+        except Exception as err:
+            print("set win size error {}".format(err))
 
     def posix_shell(self):
         import select
         """
         Use paramiko channel connect server interactive.
-        使用paramiko模块的channel，连接后端，进入交互式
+        使用 paramiko 模块的channel，连接后端，进入交互式
         """
         # 创建记录日志的文件，分为.log和.time两个文件,log表示记录日志，True
         log_file_f, log_time_f, log_input_f = self.get_log()
@@ -455,7 +451,7 @@ class SshTty(Tty):
         data = ''
         input_mode = False
         try:
-            tty.setraw(fd) # 设置终端为非阻塞的输入方式，按字符响应键盘输入
+            tty.setraw(fd)  # 设置终端为非阻塞的输入方式，按字符响应键盘输入
             tty.setcbreak(fd)
             self.channel.settimeout(0.0)
 
@@ -469,17 +465,17 @@ class SshTty(Tty):
                         fd,
                         fcntl.F_SETFL,
                         flag | os.O_NONBLOCK)
-                except Exception:
-                    pass
+                except Exception as err:
+                    print("select error {}".format(err))
 
                 if self.channel in r:
                     try:
-                        x = u(self.channel.recv(10240))
+                        x = self.channel.recv(10240)
                         if len(x) == 0:
                             break
                         # 当有vim编辑文件时，记录相应信息
                         if self.vim_flag:
-                            self.vim_data += x
+                            self.vim_data += u(x)
 
                         index = 0
                         len_x = len(x)
@@ -557,60 +553,53 @@ class SshTty(Tty):
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_tty)
 
-            log_file_f.write(("End time is %s" % datetime.datetime.now()).encode())
+            log_file_f.write(
+                ("End time is %s" %
+                 datetime.datetime.now()).encode())
             log_file_f.close()
             log_time_f.close()
             log_input_f.close()
 
     # thanks to Mike Looijmans for this code
-    def windows_shell(chan):
-        import threading
-
-        sys.stdout.write("Line-buffered terminal emulation. Press F6 or ^Z to send EOF.\r\n\r\n")
-
-        def writeall(sock):
-            while True:
-                data = sock.recv(256)
-                if not data:
-                    sys.stdout.write('\r\n*** EOF ***\r\n\r\n')
-                    sys.stdout.flush()
-                    break
-                sys.stdout.write(data)
-                sys.stdout.flush()
-
-        writer = threading.Thread(target=writeall, args=(chan,))
-        writer.start()
-
-        try:
-            while True:
-                d = sys.stdin.read(1)
-                if not d:
-                    break
-                chan.send(d)
-        except EOFError:
-            # user hit ^Z or F6
-            pass
+    # def windows_shell(chan):
+    #     import threading
+    #
+    #     sys.stdout.write("Line-buffered terminal emulation. Press F6 or ^Z to send EOF.\r\n\r\n")
+    #
+    #     def writeall(sock):
+    #         while True:
+    #             data = sock.recv(256)
+    #             if not data:
+    #                 sys.stdout.write('\r\n*** EOF ***\r\n\r\n')
+    #                 sys.stdout.flush()
+    #                 break
+    #             sys.stdout.write(data)
+    #             sys.stdout.flush()
+    #
+    #     writer = threading.Thread(target=writeall, args=(chan,))
+    #     writer.start()
+    #
+    #     try:
+    #         while True:
+    #             d = sys.stdin.read(1)
+    #             if not d:
+    #                 break
+    #             chan.send(d)
+    #     except EOFError:
+    #         # user hit ^Z or F6
+    #         pass
 
     def connect(self):
         """
         Connect server.
         连接服务器
         """
-        # 发起ssh连接请求 Make a ssh connection
-#         print self.asset,'==================='
-#         ssh = self.get_connection()
-#
-#         transport = ssh.get_transport()
-#         transport.set_keepalive(30)
-#         transport.use_compression(True)
-
-        # 重写认证流程
         # now connect
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect((self.asset, self.port))
         except Exception as e:
-            print('*** Connect failed: ' + str(e))
+            print('*** {} Connect failed: {}'.format(self.asset, str(e)))
             return
 
         try:
@@ -621,7 +610,7 @@ class SshTty(Tty):
                 print('*** SSH negotiation failed.')
                 return
 
-            # 不需要从文件里面读取key
+            # # 不需要从文件里面读取key
             # try:
             #     keys = paramiko.util.load_host_keys(os.path.expanduser('~/.ssh/known_hosts'))
             # except IOError:
@@ -630,7 +619,7 @@ class SshTty(Tty):
             #     except IOError:
             #         print('*** Unable to open host keys file')
             #         keys = {}
-
+            #
             # # check server's host key -- this is important.
             # key = t.get_remote_server_key()
             # if self.asset not in keys:
@@ -645,11 +634,11 @@ class SshTty(Tty):
             #     print('*** Host key OK.')
 
             # get username
-#             if self.user == '':
-#                 default_username = getpass.getuser()
-#                 username = input('Username [%s]: ' % default_username)
-#                 if len(username) == 0:
-#                     username = default_username
+            # if self.user == '':
+            #     default_username = getpass.getuser()
+            #     username = input('Username [%s]: ' % default_username)
+            #     if len(username) == 0:
+            #         username = default_username
 
             try:
                 self.agent_auth(t, self.username)
@@ -658,13 +647,12 @@ class SshTty(Tty):
             if not t.is_authenticated():
                 try:
                     self.manual_auth(t, self.user, self.asset)
-                except BaseException:
-                    pass
-            if not t.is_authenticated():
-                print('*** Authentication failed. :(')
-                t.close()
-                # sys.exit(1)
-                return
+                except Exception as err:
+                    print(
+                        "ssh_key/dss_key/user_pass auth failed. {}".format(err))
+                    t.close()
+                    return
+
             global channel
             win_size = self.get_win_size()
             self.channel = channel = t.open_session()
@@ -673,10 +661,7 @@ class SshTty(Tty):
             # on the remote end.
             AgentRequestHandler(channel)
 
-        # 获取连接的隧道并设置窗口大小 Make a channel and set windows size
-
-        # self.channel = channel = ssh.invoke_shell(height=win_size[0], width=win_size[1], term='xterm')
-#         self.channel = channel = transport.open_session()
+            # 获取连接的隧道并设置窗口大小 Make a channel and set windows size
             channel.get_pty(
                 term='xterm',
                 height=win_size[0],
@@ -684,60 +669,92 @@ class SshTty(Tty):
             channel.invoke_shell()
             try:
                 signal.signal(signal.SIGWINCH, self.set_win_size)
-            except BaseException:
-                pass
+            except Exception as err:
+                print("get_pty error {}".format(err))
 
             self.posix_shell()
 
             # Shutdown channel socket
             channel.close()
-#             ssh.close()
         except Exception as e:
             print('*** Caught exception: ' + str(e.__class__) + ': ' + str(e))
             traceback.print_exc()
             try:
                 t.close()
-            except BaseException:
-                pass
-            # sys.exit(1)
+            except Exception as err:
+                print("{}".format(err))
             return
 
 
 def is_ip_addr(ip):
-    reg = re.compile("^(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|[1-9])\\."
-                     "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\."
-                     "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\."
-                     "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)$")
+    reg = re.compile(
+            "^(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|[1-9])\\."
+            "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\."
+            "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)\\."
+            "(1\\d{2}|2[0-4]\\d|25[0-5]|[1-9]\\d|\\d)$"
+    )
 
     return bool(reg.match(ip))
 
 
-def enter(print_over, nav, option):
+class Command(object):
 
-    gid_pattern = re.compile(r'^g\d+$')
+    def __init__(self, option, nav, print_over):
+        self.option = option
+        self.nav = nav
+        self.print_over = print_over
 
-    # 可以按回车了
-    if option in ['\n', '']:
+    @staticmethod
+    def ent():
         return
 
-    if option in ['L', 'l']:
+    def show_key(self):
         # 列出用户密钥
-        if option == 'l':
+        if self.option == 'l':
             print(os.popen('ssh-add -l').read())
         else:
             print(os.popen('ssh-add -L').read())
         return
 
-    if option in ['#hostname']:
+    @staticmethod
+    def show_hostname():
         # 列出当前跳板机的主机名
         print(os.popen('hostname').read())
         return
 
-    if option in ['P', 'p']:
-        if print_over:
-            nav.search()
-            nav.print_host()
+    def show_print(self):
+        self.nav.search()
+        self.nav.print_host()
         return
+
+    def show_search(self):
+        if self.print_over:
+            self.nav.search(self.option.lstrip('/'))
+            self.nav.print_host()
+        return
+
+    def show_help(self):
+        self.nav.print_nav()
+        return
+
+
+def enter(cf, print_over, nav, option):
+
+    gid_pattern = re.compile(r'^g\d+$')
+    c = Command(option, nav, print_over)
+
+    # 可以按回车了
+    if option in ['\n', '']:
+        return c.ent()
+
+    if option in ['L', 'l']:
+        return c.show_key()
+
+    if option in ['#hostname']:
+        return c.show_hostname()
+
+    if option in ['P', 'p']:
+        return c.show_print()
 
     if option in ['R', 'r']:
         rdp_ip = input('请输入您要登录的机器IP：')
@@ -760,25 +777,23 @@ def enter(print_over, nav, option):
             print('您已退出RDP模式.')
 
     if option.startswith('/') or gid_pattern.match(option):
-        if print_over:
-            nav.search(option.lstrip('/'))
-            host_index = 0
-            print_over = False
-        return
+        return c.show_search()
 
     elif option in ['H', 'h']:
-        nav.print_nav()
-        return
+        return c.show_help()
 
     elif option in ['Q', 'q', 'exit']:
+        # time.sleep(2)
         sys.exit()
 
     else:
         user = login_user
         if option.isdigit():
-            if not 0 < int(option) <= host_index:
-                color_print('Wrong number. Please check!!')
+            nav.search()
+            if not 0 < int(option) <= len(nav.search_result):
+                color_print('Invalid number. Please check!!')
                 nav.print_nav()
+                return
             host = nav.search_result[int(option) - 1].get('hostname')
         else:
             # <user>@<host>
@@ -788,20 +803,14 @@ def enter(print_over, nav, option):
             else:
                 host = option
 
-        # host只能是IP或者符合规则的主机名 #
-        if not check_hostname(host):
-            color_print('Host %r not exist!!' % host)
-            nav.print_nav()
-            return
-
         print('Connecting to %s@%s' % (user, host))
         ssh_tty = SshTty(
+            cf,
             user,
             login_user,
             host,
             "/home/%s/.ssh/id_rsa" % user)
         ssh_tty.connect()
-        print_over = True
 
 
 class RDPException(Exception):
@@ -885,6 +894,10 @@ class Nav(object):
                 "hostname": "host6-o-sendal.com",
                 "ip": "10.10.10.15",
             },
+            {
+                "hostname": "192.168.1.136",
+                "ip": "192.168.1.136",
+            },
         ]
         self.user = user
         self.search_result = []
@@ -921,14 +934,20 @@ class Nav(object):
             key=lambda hn: hn.get("hostname")
         )
 
+        def is_contain(host):
+            return True if str_r in host.get("hostname") else False
+
         if str_r != '':
             self.search_result = list(
                 filter(
-                    lambda host: host.get("hostname").lower().count(
-                        str_r.lower()),
-                    self.search_result))
+                    # lambda host: host.get("hostname").lower().count(str_r.lower()),
+                    is_contain,
+                    self.search_result
+                )
+            )
 
-    def print_host(self, start=0):
+    def print_host(self):
+        start = 0
         host_num = len(self.search_result)
 
         while True:
@@ -954,15 +973,7 @@ class Nav(object):
                 input("\033[1;32mPress [ENTER] to continue...\033[0m ").strip()
 
 
-def check_hostname(hostname):
-    if hostname.count('.') == 3 or hostname.count(
-            '-') >= 2 or hostname.endswith('host.dataengine.com'):
-        return True
-    else:
-        return False
-
-
-def main():
+def start(cf):
     """
     主程序
     """
@@ -972,31 +983,21 @@ def main():
     nav = Nav(login_user)
     nav.print_nav()
 
-    # host_index = 0
     print_over = True
 
     try:
         while True:
-            # if not print_over:
-            #     print_over = nav.print_host(host_index)
-            #     host_index += 100
 
             try:
                 option = input(
                     "\033[1;32mOption or Host>:\033[0m ").strip()
-                # option = input(
-                #     "\033[1;32mPress [ENTER] to continue...\033[0m ").strip()
             except EOFError:
                 nav.print_nav()
                 continue
             except KeyboardInterrupt:
                 sys.exit(0)
-            enter(print_over, nav, option)
+            enter(cf, print_over, nav, option)
 
     except IndexError as e:
         color_print(e)
         sys.exit(1)
-
-
-if __name__ == '__main__':
-    main()
