@@ -19,6 +19,7 @@ import struct
 import fcntl
 import signal
 import socket
+import json
 
 import logging
 from subprocess import Popen
@@ -51,7 +52,25 @@ except ImportError:
     sys.exit()
 
 
-# class Utils(object):
+class Utils(object):
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def get_host_from_file(host_file):
+        with open(host_file, "r") as f:
+            data = json.load(f)
+        return data
+
+    @staticmethod
+    def get_host_from_api():
+        return []
+
+    @staticmethod
+    def get_host_from_db():
+        return []
+
 
 def color_print(msg, color='red', exits=False):
     """
@@ -766,7 +785,8 @@ def enter(cf, print_over, nav, option):
     else:
         user = login_user
         if option.isdigit():
-            nav.search()
+            if len(nav.search_result) == 0:
+                nav.search()
             if not 0 < int(option) <= len(nav.search_result):
                 color_print('Invalid number. Please check!!')
                 nav.print_nav()
@@ -840,13 +860,13 @@ class RDP(RDPException):
         return user_dir
 
 
-class Nav(object):
+class Nav(Utils):
     """
     导航提示类
     """
 
     def __init__(self, user):
-        self.perm_host = None
+        self.perm_host = self.get_host_from_file("hosts.json")
         self.user = user
         self.search_result = []
         self.user_perm = {}
